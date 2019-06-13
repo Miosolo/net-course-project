@@ -11,12 +11,12 @@
 
 // Plz add the -C99 flag to compile
 int main(int argc, char *argv[]) {
-  char server_addr[20] = "127.0.0.1"; // server address
-  int server_port = 12000; // server port
-  /*/if (argc < 2 || scanf("%s%s", &server_addr, &server_port) != 2) {// check the input params' amount and format
+  char *server_addr = argv[1]; // server address
+  int server_port; // server port
+  if (argc < 2 || sscanf(argv[2], "%d", &server_port) != 1) {// check the input params' amount and format
     printf("command line params should be (address, port)\n");
     return 1; // abnormal exit
-  }*/
+  }
 
   // init socket id
   int client_sockfd; 
@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
   
   char buffer[BUF_SIZE];  // the buffer used as pipe of stdin <=> client <=> server
   // starting connection loop
-  while(scanf("%s", &buffer)) { // scanf returns the valid param amount, so scanf()==1 <=> valid input
+  while(scanf("%s", buffer)) { // scanf returns the valid param amount, so scanf()==1 <=> valid input
     if (strcmp(buffer, "exit") == 0) { // input "exit"
       printf("bye\n");
       return 0;
