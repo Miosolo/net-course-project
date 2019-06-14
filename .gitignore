@@ -55,5 +55,5 @@ dkms.conf
 *.ipch
 
 *vscode/*
-udp-chat/client
-udp-chat/server
+client
+server

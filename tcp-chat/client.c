@@ -1,51 +1,83 @@
 
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
- 
-int main(int argc, char *argv[])
-{
+#include <netinet/in.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#define FAIL -1           // define a friendly flag
+#define BUF_SIZE 1 << 10  // client I/O buffer size
+
+int socket_exit(int sockfd, int flag) {
+  // defines the exit method with releasing the socket
+  close(sockfd);  // closes the socket
+  return flag;    // flag is 0 or 1
+}
+
+// Plz add the -C99 flag to compile
+int main(int argc, char *argv[]) {
+  char *server_addr = argv[1];     // server address
+  short unsigned int server_port;  // server port, 16 bits
+
+  if (argc < 3 || sscanf(argv[2], "%i", &server_port) != 1) {
+    // check the input params' amount and format
+    printf("command line params should be (IP, port)\n");
+    return 1;  // abnormal exit
+  }
+
+  // init client socket id
   int client_sockfd;
-  int len;
-  struct sockaddr_in remote_addr; //服务器端网络地址结构体
-  char buf[BUFSIZ]; //数据传送的缓冲区
-  memset(&remote_addr,0,sizeof(remote_addr)); //数据初始化--清零
-  remote_addr.sin_family=AF_INET; //设置为IP通信
-  remote_addr.sin_addr.s_addr=inet_addr("127.0.0.1");//服务器IP地址
-  remote_addr.sin_port=htons(8000); //服务器端口号
-  
-  /*创建客户端套接字--IPv4协议，面向连接通信，TCP协议*/
-  if((client_sockfd=socket(PF_INET,SOCK_STREAM,0))<0)
-  {
-    perror("socket");
-    return 1;
+  if ((client_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == FAIL) {
+    // apply for a UDP IPv4 socket
+    perror("getting socket form the OS");  // explain the latest errorno
+    return socket_exit(client_sockfd, 1);
   }
-  
-  /*将套接字绑定到服务器的网络地址上*/
-  if(connect(client_sockfd,(struct sockaddr *)&remote_addr,sizeof(struct sockaddr))<0)
-  {
-    perror("connect");
-    return 1;
+
+  // init server address
+  struct sockaddr_in remote_addr = {0};                  // set to 0
+  remote_addr.sin_family = AF_INET;                      // IPv4
+  remote_addr.sin_addr.s_addr = inet_addr(server_addr);  // server IP
+  remote_addr.sin_port = htons(server_port);             // server port
+
+  // build connection with the socket to TCP server
+  if (connect(client_sockfd, (struct sockaddr *)&remote_addr,
+              sizeof(struct sockaddr_in)) == FAIL) {
+    // if encountered error connecting to server
+    perror("connecting to server");
+    return socket_exit(client_sockfd, 1);
   }
-  printf("connected to server\n");
-  len=recv(client_sockfd,buf,BUFSIZ,0);//接收服务器端信息
-    buf[len]='\0';
-  printf("%s",buf); //打印服务器端信息
-  
-  /*循环的发送接收信息并打印接收信息--recv返回接收到的字节数，send返回发送的字节数*/
-  while(1)
-  {
-    printf("Enter string to send:");
-    scanf("%s",buf);
-    if(!strcmp(buf,"quit"))
-      break;
-    len=send(client_sockfd,buf,strlen(buf),0);
-    len=recv(client_sockfd,buf,BUFSIZ,0);
-    buf[len]='\0';
-    printf("received:%s\n",buf);
+  printf(
+      "connected to server\n"
+      "type anything to send to the server, and type 'exit' to stop\n");
+
+  // the buffer used as pipe of stdin <=> client <=> server
+  char buffer[BUF_SIZE];
+  // starting processing loop
+  while (scanf("%s", buffer)) {
+    // scanf returns the valid param amount, so scanf()==1 <=> valid input
+    long len = 0;  // the length of success transfer
+    if ((len = send(client_sockfd, buffer, strlen(buffer) + 1, 0)) == FAIL) {
+      // send data using the connection
+      perror("sending data to server");
+      return socket_exit(client_sockfd, 1);
+    }
+
+    if (strncmp(buffer, "exit", BUF_SIZE) == 0) {
+      // if inputed "exit": send to server, then close it self
+      close(client_sockfd);  // close the socket
+      printf("bye\n");
+      return socket_exit(client_sockfd, 0);
+    }
+
+    if ((len = recv(client_sockfd, buffer, BUF_SIZE, 0)) == FAIL) {
+      // receive data from server, if fail
+      perror("receiving data from server");
+      return socket_exit(client_sockfd, 1);
+    }
+
+    buffer[len] = '\0';  // end the string, if needed
+    printf("Received from server: %s\n", buffer);
   }
-  close(client_sockfd);//关闭套接字
-    return 0;
 }
