@@ -56,3 +56,4 @@ dkms.conf
 
 *vscode/*
 udp-chat/client
+udp-chat/server
