@@ -9,12 +9,6 @@
 #define FAIL -1           // define a friendly flag
 #define BUF_SIZE 1 << 10  // client I/O buffer size
 
-int socket_exit(int sockfd, int flag) {
-	// defines the exit method with releasing the socket
-	close(sockfd);  // closes the socket
-	return flag;    // flag is 0 or 1
-}
-
 // Plz add the -C99 flag to compile
 int main(int argc, char *argv[]) {
 	char *server_addr = argv[1];     // server address
@@ -30,7 +24,7 @@ int main(int argc, char *argv[]) {
 	if ((client_sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == FAIL) {
 		// apply for a UDP IPv4 socket
 		perror("getting socket form the OS");  // explain the latest errorno
-		return socket_exit(client_sockfd, 1);
+		return 1;
 	}
 	printf(
 			"socket established\ntype anything to send to the server, and type "
@@ -52,13 +46,14 @@ int main(int argc, char *argv[]) {
 											sizeof(struct sockaddr))) == FAIL) {
 			// send data to the address & port specified
 			perror("sending data to server");
-			return socket_exit(client_sockfd, 1);
+			return 1;
 		}
 
 		if (strncmp(buffer, "exit", BUF_SIZE) == 0) {
 			// if inputed "exit": send to server, then close it self
 			printf("bye\n");
-			return socket_exit(client_sockfd, 0);
+			close(client_sockfd);
+			return 0;
 		}
 
 		unsigned int addr_len = sizeof(struct sockaddr_in);
@@ -67,7 +62,7 @@ int main(int argc, char *argv[]) {
 												(socklen_t *)&addr_len)) == FAIL) {
 			// receive data from the address & port specified
 			perror("receiving from server");
-			return socket_exit(client_sockfd, 1);
+			return 1;
 		}
 
 		printf("Received from server: %s\n", buffer);

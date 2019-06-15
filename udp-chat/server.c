@@ -9,12 +9,6 @@
 #define FAIL -1           // define a friendly flag
 #define BUF_SIZE 1 << 10  // server I/O buffer size
 
-int socket_exit(int sockfd, int flag) {
-	// defines the exit method with releasing the socket
-	close(sockfd);  // closes the socket
-	return flag;    // flag is 0 or 1
-}
-
 // Plz add the -C99 flag to compile
 int main(int argc, char *argv[]) {
 	// read the port from cli command
@@ -28,7 +22,7 @@ int main(int argc, char *argv[]) {
 	// get socket, IPv4 & UDP
 	if ((server_sockfd = socket(PF_INET, SOCK_DGRAM, 0)) == FAIL) {
 		perror("getting socket from the OS"); // describe the error
-		return socket_exit(server_sockfd, 1);
+		return 1;
 	}
 
 	struct sockaddr_in local_addr = {0};  // server's local address, init to zero
@@ -39,7 +33,7 @@ int main(int argc, char *argv[]) {
 					 sizeof(struct sockaddr_in)) == FAIL) {
 		// bind the socket to a local addr
 		perror("binding local address");
-		return socket_exit(server_sockfd, 1);
+		return 1;
 	}
 	printf("listening on :%i\n", server_port);
 
@@ -58,17 +52,18 @@ int main(int argc, char *argv[]) {
 
 		if (strncmp(buffer, "exit", BUF_SIZE) == 0) {  // detect 'exit'
 			printf("connection closed by client\n");
-			return socket_exit(server_sockfd, 0);
+			close(server_sockfd);
+			return 0;
 		}
 
 		printf("typing your reply: ");  // let user input the reply
 		if (scanf("%s", buffer) &&
-				sendto(server_sockfd, buffer, strlen(buffer) + 1, 0,
+				sendto(server_sockfd, buffer, strlen(buffer) + 1, 0, // including the end \0
 							 (struct sockaddr *)&remote_addr, addr_len) == FAIL) {
 			// waiting for user input & check sendto status
 			// reply to server addr, if encounter an error:
 			perror("replying to the client");
-			return socket_exit(server_sockfd, 1);
+			return 1;
 		}
 	}
 }
