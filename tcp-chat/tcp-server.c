@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
 	// get socket, IPv4 & TCP
 	if ((listen_sockfd = socket(PF_INET, SOCK_STREAM, 0)) == FAIL) {
 		perror("getting socket from the OS");  // describe the error
-		return false;
+		return 1;
 	}
 
 	// init the server (local) address
@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
 	if (bind(listen_sockfd, (struct sockaddr *)&local_addr,
 					 sizeof(struct sockaddr_in)) == FAIL) {
 		perror("binding local address");
-		return false;
+		return 1;
 	}
 
 	// listening to the connection request with queue length: 10
