@@ -57,3 +57,4 @@ dkms.conf
 *vscode/*
 client
 server
+multi-server
