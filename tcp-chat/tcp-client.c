@@ -61,7 +61,6 @@ int main(int argc, char *argv[]) {
 			// if inputed "exit": send to server, then close it self
 			close(client_sockfd);  // close the socket
 			printf("bye\n");
-			close(client_sockfd);
 			return 0;
 		}
 
@@ -69,6 +68,13 @@ int main(int argc, char *argv[]) {
 			// receive data from server, if fail
 			perror("receiving data from server");
 			return 1;
+		}
+
+		if (len == 0) {
+			// received 0 length <=> server closed the conneciton
+			printf("conection closed by server");
+			close(client_sockfd);  // close the socket
+			return 0;
 		}
 
 		buffer[len] = '\0';  // end the string, if needed

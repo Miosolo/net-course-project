@@ -36,7 +36,8 @@ int main(int argc, char *argv[]) {
 	remote_addr.sin_addr.s_addr = inet_addr(server_addr);  // server IP
 	remote_addr.sin_port = htons(server_port);             // server port
 
-	char buffer[BUF_SIZE];  // the buffer used as pipe of stdin <=> client <=> server
+	char buffer[BUF_SIZE];  // the buffer used as pipe of stdin <=> client <=>
+													// server
 	// starting connection loop
 	while (scanf("%s", buffer)) {
 		// scanf returns the valid param amount, so scanf()==1 <=> valid input
@@ -63,6 +64,13 @@ int main(int argc, char *argv[]) {
 			// receive data from the address & port specified
 			perror("receiving from server");
 			return 1;
+		}
+
+		if (len == 0) {
+			// received 0 length <=> server closed the conneciton
+			printf("conection closed by server");
+			close(client_sockfd);  // close the socket
+			return 0;
 		}
 
 		printf("Received from server: %s\n", buffer);
