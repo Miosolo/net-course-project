@@ -17,8 +17,8 @@ void *exit_ctrl(void *ptr) {
 	char buf[5];
 	while (scanf("%s", buf)) {  // scan the user's input
 		if (strncmp("exit", buf, 4) == 0) {
-			// kill the whole proc group including master proc & its childs
-			kill(0, SIGINT);
+			// kill self
+			kill(getpid(), SIGINT);
 		}
 	}
 }
