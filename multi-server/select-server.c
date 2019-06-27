@@ -10,12 +10,12 @@
 
 #define FAIL -1           // define a friendly flag
 #define BUF_SIZE 1 << 10  // server I/O buffer size
-#define Q 10              // max online client amount
+#define Q 10              // max online clients
 
 // Plz add the -C99 flag to compile
 int main(int argc, char *argv[]) {
 	// read the port from cli command
-	short unsigned int server_port;
+	short unsigned int server_port = 12000;
 	if (argc < 2 || sscanf(argv[1], "%i", &server_port) != 1) {
 		// check param list length & read the port num
 		printf("command line param should be the listening port\n");
@@ -52,58 +52,76 @@ int main(int argc, char *argv[]) {
 	struct sockaddr_in remote_addr = {0};                // client address
 	unsigned int addr_len = sizeof(struct sockaddr_in);  // address length
 	char buffer[BUF_SIZE];                               // server I/O buffer
-	fd_set conn_set;                   // the set to trace connections
-	FD_ZERO(&conn_set);                // clear
-	FD_SET(listen_sockfd, &conn_set);  // register the listening socket
-	int max_fd = listen_sockfd;        // maximum file describer
+	fd_set all_set;                   // the sets to trace all fds
+	FD_ZERO(&all_set);                // clear
+	FD_SET(listen_sockfd, &all_set);  // register the listening socket
+	FD_SET(0, &all_set);              // register the stdin socket
+	int max_fd = listen_sockfd;       // maximum file describer
 
 	// a simple connection queue, with the listenr at the head
-	int connfd_queue[Q] = {listen_sockfd, 0};
-	int empty_slot = 1;  // trace the first empty index in the queue
+	int connfd_queue[Q] = {0};
 
-	while (select(max_fd + 1, &conn_set, NULL, NULL, NULL) != FAIL) {
-		// go through the connection queue
-		for (int i = 0; i < empty_slot; i++) {
-			int thisfd = connfd_queue[i];
-			if (thisfd == 0) {
-				continue;  // pass the empty slot
-			}
-
-			if (!FD_ISSET(thisfd, &conn_set)) {
-				FD_SET(thisfd, &conn_set);  // keep alive
-				continue;
-			}
-
-			// below: catched changes
-
-			// handle the connecting request at listening port
-			if (thisfd == listen_sockfd) {
-				// is the conncetion socket <=> new client inbound
-				// check the max available slot index
-				if (empty_slot != Q) {
-					// when queue is available, accept the connection
-					int conn;  // connection socket
-					if ((conn = accept(listen_sockfd, (struct sockaddr *)&remote_addr,
-														 &addr_len)) == FAIL) {
-						// failed to accept the connection
-						perror("accepting connection");
-						return 1;
+	fd_set select_set = all_set;  // a copy of all_set to select
+	for (; select(max_fd + 1, &select_set, NULL, NULL, NULL) != FAIL;
+			 select_set = all_set) {
+		// check stdin "exit"
+		if (FD_ISSET(0, &select_set)) {
+			char inbuf[5];
+			fgets(inbuf, 5, stdin);  // reads the input
+			if (strncmp(inbuf, "exit", 5) == 0) {
+				// detected "exit", close all connections
+				close(listen_sockfd);
+				for (int i = 0; i < Q; i++) {
+					if (connfd_queue[i] != 0) {
+						// if connection socket exist, close it
+						close(connfd_queue[i]);
 					}
-
-					// show remote info
-					printf("connection #%d established with %s:\n", conn,
-								 inet_ntoa(remote_addr.sin_addr));
-
-					// update the max fd index
-					max_fd = conn > max_fd ? conn : max_fd;
-					connfd_queue[empty_slot++] = conn;  // add this socket to the queue
-					// NOTICE: Delayed FD_SET(conn, &conn_set)
-				} else {
-					// if the queue is full, delay accpeting the connection
-					FD_SET(listen_sockfd, &conn_set);
-					// reactivate the listening port, waiting for someone's exit
 				}
-			} else {     // chosed a connection socket
+				// log out
+				printf("all connections are closed by server, bye\n");
+				return 0;
+			}
+		}
+
+		// check the listening socket
+		if (FD_ISSET(listen_sockfd, &select_set)) {
+			// is the conncetion socket <=> new client inbound
+			// find an empty slot in queue
+			int slot = Q;
+			for (int i = 0; i < Q; i++) {
+				if (connfd_queue[i] == 0) {
+					slot = i;
+					break;
+				}
+			}
+
+			if (slot != Q) {
+				// when queue is available, accept the connection
+				int conn;  // connection socket
+				if ((conn = accept(listen_sockfd, (struct sockaddr *)&remote_addr,
+													 &addr_len)) == FAIL) {
+					// failed to accept the connection
+					perror("accepting connection");
+					return 1;
+				}
+
+				// show remote info
+				printf("connection #%d established with %s:\n", conn,
+							 inet_ntoa(remote_addr.sin_addr));
+
+				// update the max fd index
+				max_fd = conn > max_fd ? conn : max_fd;
+				connfd_queue[slot] = conn;  // add this socket to the queue
+				FD_SET(conn, &all_set);     // register in connection set
+			}  // else: select & handle listen_fd in the next round
+		}
+
+		// go through the connection queue
+		for (int i = 0; i < Q; i++) {
+			int thisfd = connfd_queue[i];
+
+			// if the socket has an action
+			if (thisfd != 0 && FD_ISSET(thisfd, &select_set)) {
 				long len;  // received msg length
 				if ((len = recv(thisfd, buffer, BUF_SIZE, 0)) == FAIL) {
 					perror("receiving");
@@ -113,36 +131,13 @@ int main(int argc, char *argv[]) {
 				buffer[len] = 0;                          // ensure the string ends
 				if (strncmp(buffer, "exit", len) == 0) {  // detected 'exit'
 					printf("connection #%d was closed by client\n", thisfd);
-					if (i != empty_slot - 1) {
-						// copy the last connfd there & decrease the empty_slot
-						// i--, so in the next round connfd[i] will be checked again
-						// also, the FD flag is kept
-						connfd_queue[i] = connfd_queue[empty_slot - 1];
-						i--, empty_slot--;
-					} else {
-						// if they overlaps <-> the last one
-						empty_slot--;
-					}
-					FD_CLR(thisfd, &conn_set);
+					connfd_queue[i] = 0;  // clear the slot in connection queue
+					FD_CLR(thisfd, &all_set);
 					close(thisfd);  // close this connection
 					continue;       // go to the next round
 				}
 
 				printf("received from #%d: %s\n", thisfd, buffer);
-				printf("type your response: ");
-				scanf("%s", buffer);  // read the stdin input
-
-				// check the server user's input
-				if (strncmp(buffer, "exit", len) == 0) {  // detect 'exit'
-					close(listen_sockfd);
-					for (int i = 0; i < Q; i++) {
-						if (connfd_queue[i] != 0) {
-							close(connfd_queue[i]);
-						}  // release all the existing sockets
-					}
-					printf("all connections were closed by server\n");
-					return 0;
-				}
 
 				// including the ending \0
 				if (send(thisfd, buffer, strlen(buffer) + 1, 0) == FAIL) {
@@ -151,11 +146,9 @@ int main(int argc, char *argv[]) {
 					perror("replying");
 					return 1;
 				}
-
-				FD_ISSET(thisfd, &conn_set);  // reactivate monitoring this so
-			}                               // end of else
-		}                                 // end of for
-	}                                   // end of while
+			}
+		}  // end of iterating connection queue
+	}    // end of looping
 
 	// if select fails, jumps here
 	perror("selecting");
